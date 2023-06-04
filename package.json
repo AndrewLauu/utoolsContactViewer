@@ -1,0 +1,9 @@
+{
+  "author": "Andrew Lau",
+  "homepage": "https://github.com/AndrewLauu/utoolsContactViewer",
+  "license": "MIT",
+  "dependencies": {
+    "js.vcf": "*",
+    "pinyin-pro": "*"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "version": "0.0.1",
+  "pluginName": "通讯录",
+  "description": "通讯录查询，支持全拼、首拼查询，支持CSV格式文件导入",
+  "author": "Andrew Lau",
+  "homepage": "https://u.tools",
+  "preload": "preload.js",
+  "logo": "logo.png",
+  "features": [
+    {
+      "code": "list_contact",
+      "explain": "通讯录查询",
+      "cmds": [
+        "电话本",
+        "通讯录"
+      ]
+    },
+    {
+      "code": "new_list",
+      "explain": "通讯录导入",
+      "cmds": [
+        {
+          "type": "files",
+          "label": "导入此文件到通讯录",
+          "fileType": "file",
+          "maxLength": 1,
+          "match": "/.*\\.(csv)|(vcf)/i"
+        }
+      ]
+    }
+  ]
+}

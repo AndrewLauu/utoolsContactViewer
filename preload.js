@@ -13,7 +13,9 @@ function initDB() {
     // dbAllShow = []
     dbAllShow = db.map(
         r => ({
-            title: r.name + " - " + r.dprt + " (" + r.work + ")",
+            title: r.name +
+                (r.dprt ? (" - " + r.dprt) : "") +
+                (r.work ? (" (" + r.work + ")") : ""),
             description: r.tel.toString()
         })
     )
@@ -33,7 +35,9 @@ function getContactList(queryText) {
         }
     }).map(r =>
     ({
-        title: r.name + " - " + r.dprt + " (" + r.work + ")",
+        title: r.name +
+            (r.dprt ? (" - " + r.dprt) : "") +
+            (r.work ? (" (" + r.work + ")") : ""),
         description: r.tel.toString()
     })
     )
@@ -81,21 +85,25 @@ function parseVCF(vCards) {
     var totalRow = vCards.length
     var startIdx = utools.dbStorage.getItem('info/nowRows')
 
+    console.log(vCards)
+
     vCards.forEach((vCard, i) => {
         // l = ['部门','姓名','电话','岗位']
+        if (!vCard.TEL || !vCard.FN) return
         vCard.TEL.forEach(tel => {
             var l = [
-                vCard.ORG.reduce((resp, i) => { resp += (i.VALUE + ' ; ') }),
+                vCard.ORG ? vCard.ORG.map(i => i.VALUE).join(';') : '',
                 vCard.FN[0].VALUE,
-                tel,
-                vCard.TITLE.reduce((resp, i) => { resp += (i.VALUE + ' ; ') }),
+                tel.VALUE.replace(/ +/g, ''),
+                vCard.TITLE ? vCard.TITLE.map(i => i.VALUE).join(';') : '',
             ]
+
             utools.dbStorage.setItem('list/' + (i + startIdx), construcObj(l))
         })
-        startIdx += totalRow
-        utools.dbStorage.setItem('info/nowRows', startIdx)
-        return [totalRow, startIdx]
     })
+
+    utools.dbStorage.setItem('info/nowRows', startIdx + totalRow)
+    return [totalRow, startIdx + totalRow]
 }
 
 window.exports = {
@@ -114,6 +122,13 @@ window.exports = {
                 }
                 // show query
                 return callbackSetList(getContactList(searchWord))
+            },
+            select: (action, itemData) => {
+                utools.copyText(
+                    '详情：' + itemData.title + '\n' +
+                    '联系方式：' + itemData.description
+                )
+                utools.showNotification('详情已复制到剪贴板')
             }
         }
     },
@@ -140,8 +155,7 @@ window.exports = {
             },
             select: (action, itemData) => {
                 payload = itemData.payload.pop()
-                // window.utools.hideMainWindow()
-                utools.showNotification('开始导入: ' + (payload.name))
+                utools.showNotification('开始导入: ' + (payload.name) + '，完成后将提示，请稍候')
                 if (itemData.delBefore) {
                     allDoc.forEach(e => {
                         utools.dbStorage.removeItem(e._id)
@@ -165,7 +179,26 @@ window.exports = {
                     initDB()
                     utools.showNotification('导入' + total + '条，目前共有' +
                         totalRowInDb + '条，点击查看', 'list_contact')
+                    utools.outPlugin()
+
                 })
+            }
+        }
+    },
+    'export_temp': {
+        mode: "none",
+        args: {
+            enter: ({ code, type, payload }) => {
+                utools.outPlugin()
+                const savePath = utools.showSaveDialog({
+                    title: '保存位置',
+                    defaultPath: utools.getPath('downloads') + '/' + '导入模板.csv',
+                    buttonLabel: '保存'
+                })
+                //加入BOM 避免乱码
+                var content = "\ufeff" + '部门, 姓名, 电话, 岗位'
+                fs.writeFileSync(savePath, content)
+                utools.showNotification('导入模板保存在' + savePath + '，请填写后导入')
             }
         }
     }

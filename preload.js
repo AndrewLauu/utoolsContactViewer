@@ -66,7 +66,8 @@ function parseCSV(queryText) {
     //clear all first
     var rows = queryText.trim()
         .replace(/\n{2,}/g, '\n')
-        .split('\n')
+        .split('\n').slice(1)
+
     var totalRow = rows.length
     var startIdx = utools.dbStorage.getItem('info/nowRows')
 
@@ -129,6 +130,7 @@ window.exports = {
                     '联系方式：' + itemData.description
                 )
                 utools.showNotification('详情已复制到剪贴板')
+                utools.hideMainWindow()
             }
         }
     },
@@ -162,6 +164,7 @@ window.exports = {
                     })
                     utools.dbStorage.setItem('info/nowRows', 0)
                 }
+                utools.hideMainWindow()
 
                 fs.readFile(payload.path, (err, data) => {
                     if (err) {
@@ -179,8 +182,6 @@ window.exports = {
                     initDB()
                     utools.showNotification('导入' + total + '条，目前共有' +
                         totalRowInDb + '条，点击查看', 'list_contact')
-                    utools.outPlugin()
-
                 })
             }
         }
@@ -189,14 +190,14 @@ window.exports = {
         mode: "none",
         args: {
             enter: ({ code, type, payload }) => {
-                utools.outPlugin()
                 const savePath = utools.showSaveDialog({
                     title: '保存位置',
                     defaultPath: utools.getPath('downloads') + '/' + '导入模板.csv',
                     buttonLabel: '保存'
                 })
+                utools.hideMainWindow()
                 //加入BOM 避免乱码
-                var content = "\ufeff" + '部门, 姓名, 电话, 岗位'
+                var content = "\ufeff" + '部门,姓名,电话,岗位'
                 fs.writeFileSync(savePath, content)
                 utools.showNotification('导入模板保存在' + savePath + '，请填写后导入')
             }

@@ -1,17 +1,19 @@
 const fs = require('fs')
 
 const { pinyin } = require('pinyin-pro');
-const { parseVCards } = require('js.vcf')
+const { parseVCards } = require('js.vcf');
+const { resourceLimits } = require('worker_threads');
 
+// datbase schema version
+const DBSCHMVER = 2
 
+// init database for query when plugin initial run
 function initDB() {
-    //  db = []
-    // all global
-    allDoc = utools.db.allDocs('list/')
-    db = allDoc.map(r => r.value)
-    // allDoc.forEach(r => db.push(r.value))
-    // dbAllShow = []
-    dbAllShow = db.map(
+    // all global var
+    dbContactListDoc = utools.db.allDocs('list/')
+    checkDbSchema()
+    db = dbContactListDoc.map(r => r.value)
+    dbAllFormat = db.map(
         r => ({
             title: r.name +
                 (r.dprt ? (" - " + r.dprt) : "") +
@@ -22,29 +24,38 @@ function initDB() {
 }
 initDB()
 
-function getContactList(queryText) {
-    var queryText = queryText.replace(/ +/g, '.*')
-    const exp = new RegExp(queryText, "gi")
-    return db.filter(r => {
-        if (RegExp("^\\d+$").test(queryText)) {
-            return exp.test(r.tel)
-        } else if (RegExp('^[0-9a-z.*]*$', 'gi').test(queryText)) {
-            return r.py.some(py => exp.test(py))
-        } else {
-            return [r.name, r.dprt, r.work].some(e => exp.test(e))
-        }
-    }).map(r =>
-    ({
-        title: r.name +
-            (r.dprt ? (" - " + r.dprt) : "") +
-            (r.work ? (" (" + r.work + ")") : ""),
-        description: r.tel.toString()
-    })
-    )
+function checkDbSchema() {
+    var dbVer = utools.dbStorage.getItem('info/dbVer')
+
+    if (dbVer && dbVer >= DBSCHMVER) return // database schema is newest
+
+    // schema update
+    utools.showNotification("数据库更新中，请稍候...")
+
+    var file = utools.db.getAttachment('info/importFile')
+    if (file) {
+        var fileType = utools.db.getAttachmentType('info/importFile')
+        importFromFile(file, fileType)
+    }
+    else if (!dbVer) {
+        // db schema version 1
+        dbContactListDoc.forEach(e => {
+            e.value.longPy = { 'dprt': e.value.py[0], 'name': e.value.py[1] }
+            e.value.shortPy = { 'dprt': e.value.py[2], 'name': e.value.py[3] }
+            delete e.value.py
+            utools.dbStorage.setItem(e._id, e.value)
+        })
+    }
+    // else if (dbVer === 2) {}
+    else {
+        utools.showNotification("数据库出现问题，请重新导入")
+    }
+
+    utools.dbStorage.setItem('info/dbVer', DBSCHMVER)
+    utools.showNotification("数据库更新完成", 'list_contact')
 }
 
 // l = ['部门','姓名','电话','岗位']
-
 function construcObj(conInfoArray) {
     var optPinYin = { toneType: 'none', nonZh: 'consecutive' }
     var optPY = { pattern: 'first', toneType: 'none', nonZh: 'consecutive' }
@@ -53,12 +64,14 @@ function construcObj(conInfoArray) {
         "name": conInfoArray[1],
         "tel": conInfoArray[2],
         "work": conInfoArray[3],
-        "py": [
-            pinyin(conInfoArray[0], optPinYin).replace(/ /g, ""),
-            pinyin(conInfoArray[1], optPinYin).replace(/ /g, "",),
-            pinyin(conInfoArray[0], optPY).replace(/ /g, ""),
-            pinyin(conInfoArray[1], optPY).replace(/ /g, "")
-        ]
+        "longPy": {
+            'dprt': pinyin(conInfoArray[0], optPinYin).replace(/ /g, ""),
+            'name': pinyin(conInfoArray[1], optPinYin).replace(/ /g, "",)
+        },
+        "shortPy": {
+            'dprt': pinyin(conInfoArray[0], optPY).replace(/ /g, ""),
+            'name': pinyin(conInfoArray[1], optPY).replace(/ /g, "")
+        }
     }
 }
 
@@ -81,12 +94,9 @@ function parseCSV(queryText) {
     return [totalRow, startIdx]
 }
 
-
 function parseVCF(vCards) {
     var totalRow = vCards.length
     var startIdx = utools.dbStorage.getItem('info/nowRows')
-
-    console.log(vCards)
 
     vCards.forEach((vCard, i) => {
         // l = ['部门','姓名','电话','岗位']
@@ -107,32 +117,114 @@ function parseVCF(vCards) {
     return [totalRow, startIdx + totalRow]
 }
 
+function importFromFile(fileBuff, fileType, delBefore = false) {
+    utools.showNotification('开始导入，完成后将提示，请稍候')
+    if (delBefore) {
+        dbContactListDoc.forEach(e => utools.dbStorage.removeItem(e._id))
+        utools.dbStorage.setItem('info/nowRows', 0)
+    }
+
+    if (fileType === 'text/csv') {
+        var [total, totalRowInDb] = parseCSV(fileBuff.toString())
+    } else if (fileType === 'text/vcf') {
+        var [total, totalRowInDb] = parseVCF(parseVCards(fileBuff.toString()))
+    }
+    initDB()
+    //store import file for forward compatiblcy
+    utools.db.postAttachment('info/importFile', fileBuff, fileType)
+    utools.showNotification('导入' + total + '条，目前共有' +
+        totalRowInDb + '条，点击查看', 'list_contact')
+}
+
+
+function queryContactList(queryText) {
+    var queryText = queryText.replace(/：/g, ':').replace(/，/g, ',')
+
+    var queryTextList = queryText.split(',').map(e => e.split(':'))
+    var queryTextRaw = queryTextList.filter(e => e.length === 1)
+    var queryTextRaw = queryTextRaw.length === 0 ? null : queryTextRaw[0][0]
+    var filterTransIndex = {
+        '部门': 'dprt', 'bm': 'dprt',
+        '姓名': 'name', 'xm': 'name',
+        '电话': 'tel', 'dh': 'tel',
+        '岗位': 'work', 'gw': 'work'
+    }
+    var filterList = queryTextList.filter(e => e.length === 2).map(([k, v]) => [filterTransIndex[k], v])
+
+    const exp = queryTextRaw ? new RegExp(queryTextRaw, "gi") : new RegExp('.*?', "gi")
+    // dprt:xx tel:xx n:xx des:xx xx
+    return db.filter(r => {
+        //hardcopy
+        var nr = JSON.parse(JSON.stringify(r))
+        if (!filterList) { filterCheck = true }
+        else {
+            var filterCheck = filterList.every(([k, v]) => {
+                if (['dprt', 'name'].includes(k)) {
+                    // at least one !== -1
+                    var tmpCheck = nr[k].search(v) + nr.shortPy[k].search(v) + nr.longPy[k].search(v) !== -3
+                    delete nr.shortPy[k]
+                    delete nr.longPy[k]
+                }
+                else { var tmpCheck = nr[k].search(v) !== -1 }
+                delete nr[k]
+                return tmpCheck
+            })
+        }
+
+        if (!queryTextRaw) { var textCheck = true }
+        else if (RegExp("^\\d+$").test(queryTextRaw)) {
+            var textCheck = exp.test(nr.tel)
+        } else if (RegExp('^[0-9a-z.*]*$', 'gi').test(queryTextRaw)) {
+            var textCheck = [...Object.values(nr.longPy), ...Object.values(nr.shortPy)]
+                .some(py => exp.test(py))
+        } else {
+            var textCheck = [nr.name, nr.dprt, nr.work].some(e => exp.test(e))
+        }
+        return filterCheck && textCheck
+    }).map(r => ({
+        title: r.name +
+            (r.dprt ? (" - " + r.dprt) : "") +
+            (r.work ? (" (" + r.work + ")") : ""),
+        text: r.name +
+            (r.dprt ? (" - " + r.dprt) : "") +
+            (r.work ? (" (" + r.work + ")") : ""),
+        description: r.tel.toString()
+    }))
+}
+
+function copyInfo(contactObj) {
+    utools.copyText(
+        '联系人信息：' + contactObj.title + '\n' +
+        '联系方式：' + contactObj.description
+    )
+    utools.showNotification('详情已复制到剪贴板')
+}
+
+// utools 4.0 new api, push to main window 
+utools.onMainPush(
+    // callback, show first 6 line, due to api restrict
+    ({ code, type, payload }) => queryContactList(payload).slice(0, 6),
+
+    //selectCallback
+    ({ code, type, payload, option }) => copyInfo(option)
+)
+
 window.exports = {
     'list_contact': {
         mode: 'list',
         args: {
             placeholder: "输入姓名 电话 公司 部门",
-            enter: (action, callbackSetList) => {
-                //show
-                return callbackSetList(dbAllShow)
-            },
+            enter: (action, callbackSetList) => callbackSetList(dbAllFormat),
             search: (action, searchWord, callbackSetList) => {
-                // utools.showNotification('list+enter' + code + type + payload)
-                if (!searchWord) {
-                    return callbackSetList(dbAllShow)
-                }
-                // show query
-                return callbackSetList(getContactList(searchWord))
+                if (!searchWord) return callbackSetList(dbAllFormat)
+                return callbackSetList(queryContactList(searchWord))
             },
-            select: (action, itemData) => {
-                utools.copyText(
-                    '详情：' + itemData.title + '\n' +
-                    '联系方式：' + itemData.description
-                )
-                utools.showNotification('详情已复制到剪贴板')
-                utools.hideMainWindow()
-            }
+            select: (action, itemData) => copyInfo(itemData)
         }
+    },
+    'list_contact_main_window': {
+        mode: 'none',
+        args: { enter: (action) => utools.redirect('通讯录', null) }
     },
     'new_list': {
         mode: "list",
@@ -142,7 +234,7 @@ window.exports = {
                 return callbackSetList(
                     [
                         {
-                            title: '导入',
+                            title: '合并导入',
                             description: '附加导入选定文件内容，不会删除原有通讯录',
                             delBefore: false,
                             payload: payload
@@ -151,38 +243,14 @@ window.exports = {
                             description: '导入选定文件内容，原通讯录会**全部删除**',
                             delBefore: true,
                             payload: payload
-
                         }
                     ])
             },
             select: (action, itemData) => {
-                payload = itemData.payload.pop()
-                utools.showNotification('开始导入: ' + (payload.name) + '，完成后将提示，请稍候')
-                if (itemData.delBefore) {
-                    allDoc.forEach(e => {
-                        utools.dbStorage.removeItem(e._id)
-                    })
-                    utools.dbStorage.setItem('info/nowRows', 0)
-                }
+                var payload = itemData.payload.pop()
                 utools.hideMainWindow()
-
-                fs.readFile(payload.path, (err, data) => {
-                    if (err) {
-                        utools.showNotification('read fail')
-                        utools.copyqueryText(err)
-                        return
-                    }
-                    var ext = payload.name.split('.').pop().toLowerCase()
-                    // utools.showNotification(ext)
-                    if (ext === 'csv') {
-                        var [total, totalRowInDb] = parseCSV(data.toString())
-                    } else if (ext === 'vcf') {
-                        var [total, totalRowInDb] = parseVCF(parseVCards(data.toString()))
-                    }
-                    initDB()
-                    utools.showNotification('导入' + total + '条，目前共有' +
-                        totalRowInDb + '条，点击查看', 'list_contact')
-                })
+                var fileType = 'text/' + payload.name.split('.').pop().toLowerCase()
+                fs.readFile(payload.path, (err, data) => importFromFile(data, fileType, itemData.delBefore))
             }
         }
     },

@@ -1,0 +1,16 @@
+{
+  "license": "MIT",
+  "dependencies": {
+    "js.vcf": "latest",
+    "pinyin-pro": "latest"
+  },
+  "devDependencies": {
+    "eslint": "latest",
+    "eslint-config-standard": "latest",
+    "eslint-config-prettier": "latest",
+    "eslint-plugin-prettier": "latest",
+    "eslint-plugin-import": "latest",
+    "eslint-plugin-n": "latest",
+    "eslint-plugin-promise": "latest"
+  }
+}

@@ -1,29 +1,26 @@
 {
-  "version": "0.0.3",
+  "version": "0.0.4",
   "pluginName": "通讯录",
   "description": "通讯录查询，支持全拼、首拼、正则查询，支持筛选，支持 CSV、vCard (vcf) 格式文件导入",
   "author": "Andrew Lau",
   "homepage": "https://github.com/AndrewLauu/utoolsContactViewer",
   "preload": "preload.js",
-  "logo": "logo.png",
+  "logo": "./static/logo.png",
   "features": [
     {
       "code": "list_contact",
-      "explain": "通讯录查询",
-      "cmds": [
-        "电话本",
-        "通讯录"
-      ]
+      "explain": "通讯录",
+      "cmds": ["电话本", "通讯录"]
     },
     {
       "code": "list_contact_main_window",
-      "explain": "主面板通讯录查询",
+      "explain": "通讯录查询",
       "mainPush": true,
       "cmds": [
         {
           "type": "over",
-          "label": "通讯录查询(主面板)",
-          "minLength": 0,
+          "label": "通讯录查询",
+          "minLength": 2,
           "maxLength": 20
         }
       ]
@@ -44,10 +41,7 @@
     {
       "code": "export_temp",
       "explain": "通讯录导入模板下载",
-      "cmds": [
-        "通讯录模板",
-        "导出模板"
-      ]
+      "cmds": ["通讯录模板", "导出模板"]
     }
   ]
 }

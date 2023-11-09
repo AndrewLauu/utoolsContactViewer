@@ -1,7 +1,0 @@
-{
-  "license": "MIT",
-  "dependencies": {
-    "js.vcf": "*",
-    "pinyin-pro": "*"
-  }
-}
